@@ -1,266 +1,465 @@
+# Ralph Wiggum Loop: Refactor to Effect API Patterns with Drizzle & Turborepo
+
+## Overview
+
+Refactor the human-action-bot monorepo to follow modern Effect patterns inspired by [TeamWarp/effect-api-example](https://github.com/TeamWarp/effect-api-example). This includes migrating from raw SQL to Drizzle ORM, implementing schema-first branded types, adopting Turborepo for build orchestration, and restructuring the codebase for better separation of concerns.
+
+## Current State
+
+- **Database**: Raw SQL queries with D1 (Cloudflare Workers SQLite)
+- **Types**: Ad-hoc type definitions scattered across services
+- **Build**: Basic pnpm workspace without task orchestration
+- **Services**: Effect services with manual row-to-model conversion
+- **Schema**: SQL schema in `packages/worker/src/db/schema.sql`
+
+## Target State
+
+- **Database**: Drizzle ORM with typed schema definitions
+- **Types**: Schema-first branded types in shared package
+- **Build**: Turborepo with cached, parallel task execution
+- **Services**: Clean service layer consuming Drizzle-typed queries
+- **Schema**: Drizzle schema files with migrations
+
 ---
-active: true
-iteration: 1
-max_iterations: 100
-completion_promise: "HUMAN ACTION BOT COMPLETE"
-started_at: "2025-12-30T18:00:18Z"
----
 
-ultrathink # Human Action Bot - Implementation Prompt
+## Phase 1: Turborepo Setup
 
-You are building an adaptive AI tutor for Ludwig von Mises' "Human Action" book.
+### Task 1.1: Install and Configure Turborepo
 
-## Context
+```bash
+pnpm add -D turbo -w
+```
 
-- Book content exists at: `content/books/human-action/` (326 chunks, 42 chapters, index.json)
-- Stack: Effect TS + Cloudflare Workers + AI SDK (Google Gemini) + Hono + Telegram
-- Monorepo structure with `packages/worker` and `packages/cli`
+Create `turbo.json` at repo root:
 
-## Current Task
-
-Check the implementation status and continue building. On each iteration:
-
-1. **Assess Progress**: Read `STATUS.md` (create if missing) to see what's done
-2. **Pick Next Task**: Choose the next uncompleted task from the checklist below
-3. **Implement**: Write working code with proper Effect TS patterns
-4. **Test**: Verify the code works (run type checks, basic tests)
-5. **Update Status**: Mark completed tasks in `STATUS.md`
-6. **Commit**: Commit your changes with a descriptive message
-
-## Implementation Checklist
-
-### Phase 1: Foundation
-- [ ] Create monorepo structure (pnpm-workspace.yaml, package.json, tsconfig.base.json)
-- [ ] Set up worker package (wrangler.toml, package.json with effect + hono + ai-sdk deps)
-- [ ] Create D1 schema (packages/worker/src/db/schema.sql) with students, lesson_history, conversations, struggle_log tables
-- [ ] Set up Effect runtime for Cloudflare Workers (packages/worker/src/lib/effect-runtime.ts)
-- [ ] Create Hono app entry point (packages/worker/src/index.ts)
-
-### Phase 2: RAG Pipeline
-- [ ] Create embedding script (scripts/embed_chunks.ts) - reads chunks, generates embeddings
-- [ ] Create Vectorize seeding script (scripts/seed_vectorize.ts)
-- [ ] Build RAGService with Effect (packages/worker/src/services/RAGService.ts)
-- [ ] Test RAG with sample queries
-
-### Phase 3: Core Services
-- [ ] Create AIService wrapper for AI SDK (packages/worker/src/services/AIService.ts)
-- [ ] Build StudentService (packages/worker/src/services/StudentService.ts) - profile CRUD
-- [ ] Build ConversationService (packages/worker/src/services/ConversationService.ts) - memory
-- [ ] Create tutor system prompt (packages/worker/src/prompts/tutor.ts)
-- [ ] Build ChatService (packages/worker/src/services/ChatService.ts) - RAG + conversation
-
-### Phase 4: Lesson System
-- [ ] Build LessonService (packages/worker/src/services/LessonService.ts) - progression logic
-- [ ] Create comprehension assessment prompt (packages/worker/src/prompts/comprehension.ts)
-- [ ] Build ComprehensionService (packages/worker/src/services/ComprehensionService.ts)
-- [ ] Build AdaptivePacingService (packages/worker/src/services/AdaptivePacingService.ts)
-- [ ] Set up Cron Trigger for daily lessons in wrangler.toml
-
-### Phase 5: Current Events
-- [ ] Create currentEvents prompt (packages/worker/src/prompts/currentEvents.ts)
-- [ ] Build NewsService (packages/worker/src/services/NewsService.ts) - optional RSS fetch
-- [ ] Add /news route for current events analysis
-
-### Phase 6: Routes & API
-- [ ] Create /chat route (packages/worker/src/routes/chat.ts)
-- [ ] Create /lesson route (packages/worker/src/routes/lessons.ts)
-- [ ] Create /progress route for student progress
-- [ ] Add health check route
-
-### Phase 7: Telegram Integration
-- [ ] Build TelegramService (packages/worker/src/services/TelegramService.ts)
-- [ ] Create Telegram webhook route (packages/worker/src/routes/telegram.ts)
-- [ ] Implement commands: /start, /lesson, /chat, /progress, /news, /help
-- [ ] Handle inline message conversations
-
-### Phase 8: CLI Client
-- [ ] Set up cli package (packages/cli/package.json)
-- [ ] Create API client (packages/cli/src/lib/api-client.ts)
-- [ ] Build chat command (packages/cli/src/commands/chat.ts)
-- [ ] Build lesson command (packages/cli/src/commands/lesson.ts)
-- [ ] Build progress command (packages/cli/src/commands/progress.ts)
-- [ ] Create CLI entry point with commander/ink
-
-### Phase 9: Testing
-- [ ] Set up Vitest for worker package (packages/worker/vitest.config.ts)
-- [ ] Write unit tests for StudentService
-- [ ] Write unit tests for LessonService
-- [ ] Write unit tests for RAGService
-- [ ] Write unit tests for ChatService
-- [ ] Write unit tests for ComprehensionService
-- [ ] Write integration tests for API routes
-- [ ] All tests passing (`pnpm test` exits with code 0)
-
-### Phase 10: Documentation
-- [ ] Create root README.md with project overview
-- [ ] Document Cloudflare setup (D1, Vectorize, KV, Workers)
-- [ ] Document Telegram Bot setup (BotFather, webhook URL)
-- [ ] Document Google AI API setup (API key, model selection)
-- [ ] Document environment variables (.env.example)
-- [ ] Document local development workflow
-- [ ] Document deployment instructions
-
-## Effect TS Patterns to Use
-
-```typescript
-// Service definition
-class MyService extends Effect.Service<MyService>()("MyService", {
-  effect: Effect.gen(function* () {
-    const dep = yield* SomeDependency
-    return {
-      myMethod: (arg: string) => Effect.gen(function* () {
-        // implementation
-      })
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "check-types": {
+      "dependsOn": ["^check-types"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
     }
-  }),
-  dependencies: [SomeDependency]
-}) {}
-
-// Schema for validation
-const StudentSchema = Schema.Struct({
-  userId: Schema.String,
-  currentChapter: Schema.Number,
-  paceMultiplier: Schema.Number
-})
-
-// Parallel operations
-const [context, history] = yield* Effect.all([
-  ragService.search(query),
-  conversationService.getHistory(userId)
-])
+  }
+}
 ```
 
-## AI SDK Pattern
+### Task 1.2: Update package.json Scripts
+
+Add to root `package.json`:
+
+```json
+{
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "check-types": "turbo check-types",
+    "db:generate": "turbo db:generate",
+    "db:migrate": "turbo db:migrate"
+  }
+}
+```
+
+### Task 1.3: Add Package Scripts
+
+Each package needs corresponding scripts for Turbo to orchestrate.
+
+---
+
+## Phase 2: Shared Types Package
+
+### Task 2.1: Create Shared Package Structure
+
+```
+packages/shared/
+├── src/
+│   ├── index.ts           # Main exports
+│   ├── schemas/
+│   │   ├── student.ts     # Student branded types
+│   │   ├── lesson.ts      # Lesson branded types
+│   │   ├── conversation.ts # Conversation branded types
+│   │   └── common.ts      # Shared primitives (Email, UserId, etc.)
+│   └── errors/
+│       └── index.ts       # Shared error types
+├── package.json
+└── tsconfig.json
+```
+
+### Task 2.2: Define Branded Types with Effect Schema
+
+Create `packages/shared/src/schemas/common.ts`:
 
 ```typescript
-import { google } from '@ai-sdk/google'
-import { generateText } from 'ai'
+import { Schema as S } from "@effect/schema"
 
-const response = await generateText({
-  model: google('gemini-2.0-flash-exp'),
-  system: TUTOR_SYSTEM_PROMPT,
-  messages: conversationHistory
+// Branded ID types
+export const StudentIdSchema = S.Number.pipe(
+  S.int(),
+  S.brand("StudentId"),
+  S.annotations({ description: "Unique student identifier" })
+)
+export type StudentId = S.Schema.Type<typeof StudentIdSchema>
+
+export const LessonIdSchema = S.Number.pipe(
+  S.int(),
+  S.brand("LessonId"),
+  S.annotations({ description: "Unique lesson identifier" })
+)
+export type LessonId = S.Schema.Type<typeof LessonIdSchema>
+
+export const ConversationIdSchema = S.Number.pipe(
+  S.int(),
+  S.brand("ConversationId")
+)
+export type ConversationId = S.Schema.Type<typeof ConversationIdSchema>
+
+// Telegram ID (external system)
+export const TelegramIdSchema = S.String.pipe(
+  S.brand("TelegramId"),
+  S.annotations({ description: "Telegram user ID" })
+)
+export type TelegramId = S.Schema.Type<typeof TelegramIdSchema>
+
+// Learning progress types
+export const ComprehensionScoreSchema = S.Number.pipe(
+  S.greaterThanOrEqualTo(0),
+  S.lessThanOrEqualTo(100),
+  S.brand("ComprehensionScore")
+)
+export type ComprehensionScore = S.Schema.Type<typeof ComprehensionScoreSchema>
+
+export const LessonTypeSchema = S.Literal(
+  "foundational",
+  "conceptual",
+  "application",
+  "synthesis",
+  "review"
+)
+export type LessonType = S.Schema.Type<typeof LessonTypeSchema>
+```
+
+### Task 2.3: Define Domain Schemas
+
+Create `packages/shared/src/schemas/student.ts`:
+
+```typescript
+import { Schema as S } from "@effect/schema"
+import { StudentIdSchema, TelegramIdSchema, ComprehensionScoreSchema } from "./common"
+
+export const StudentSchema = S.Struct({
+  id: StudentIdSchema,
+  telegramId: TelegramIdSchema,
+  currentChapter: S.Number.pipe(S.int(), S.greaterThanOrEqualTo(1)),
+  currentSection: S.Number.pipe(S.int(), S.greaterThanOrEqualTo(1)),
+  comprehensionScore: ComprehensionScoreSchema,
+  lessonsCompleted: S.Number.pipe(S.int(), S.greaterThanOrEqualTo(0)),
+  createdAt: S.Date,
+  updatedAt: S.Date
+})
+
+export type Student = S.Schema.Type<typeof StudentSchema>
+
+export const CreateStudentSchema = S.Struct({
+  telegramId: TelegramIdSchema
+})
+
+export type CreateStudent = S.Schema.Type<typeof CreateStudentSchema>
+```
+
+---
+
+## Phase 3: Drizzle ORM Integration
+
+### Task 3.1: Install Drizzle Dependencies
+
+```bash
+# In packages/worker
+pnpm add drizzle-orm
+pnpm add -D drizzle-kit
+```
+
+### Task 3.2: Create Drizzle Schema Files
+
+Create `packages/worker/src/db/schema/students.ts`:
+
+```typescript
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+import type { StudentId, TelegramId } from "@human-action-bot/shared"
+
+export const students = sqliteTable("students", {
+  id: integer("id").primaryKey({ autoIncrement: true }).$type<StudentId>(),
+  telegramId: text("telegram_id").notNull().unique().$type<TelegramId>(),
+  currentChapter: integer("current_chapter").notNull().default(1),
+  currentSection: integer("current_section").notNull().default(1),
+  comprehensionScore: integer("comprehension_score").notNull().default(0),
+  lessonsCompleted: integer("lessons_completed").notNull().default(0),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString())
+})
+
+export type StudentRow = typeof students.$inferSelect
+export type NewStudent = typeof students.$inferInsert
+```
+
+Create `packages/worker/src/db/schema/lessons.ts`:
+
+```typescript
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+import type { LessonId, StudentId, LessonType } from "@human-action-bot/shared"
+
+export const lessonHistory = sqliteTable("lesson_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }).$type<LessonId>(),
+  studentId: integer("student_id").notNull().$type<StudentId>(),
+  chapter: integer("chapter").notNull(),
+  section: integer("section").notNull(),
+  lessonType: text("lesson_type").notNull().$type<LessonType>(),
+  score: integer("score"),
+  completedAt: text("completed_at").notNull().$defaultFn(() => new Date().toISOString())
+})
+
+export type LessonHistoryRow = typeof lessonHistory.$inferSelect
+export type NewLessonHistory = typeof lessonHistory.$inferInsert
+```
+
+Create `packages/worker/src/db/schema/index.ts`:
+
+```typescript
+export * from "./students"
+export * from "./lessons"
+export * from "./conversations"
+export * from "./struggles"
+export * from "./feedback"
+```
+
+### Task 3.3: Create Drizzle Service Layer
+
+Create `packages/worker/src/db/DrizzleLive.ts`:
+
+```typescript
+import { Effect, Layer, Context } from "effect"
+import { drizzle } from "drizzle-orm/d1"
+import type { DrizzleD1Database } from "drizzle-orm/d1"
+import * as schema from "./schema"
+import { D1DatabaseTag } from "../lib/effect-runtime"
+
+export type Database = DrizzleD1Database<typeof schema>
+
+export class DrizzleTag extends Context.Tag("Drizzle")<DrizzleTag, Database>() {}
+
+export const DrizzleLive = Layer.effect(
+  DrizzleTag,
+  Effect.gen(function* () {
+    const d1 = yield* D1DatabaseTag
+    return drizzle(d1, { schema })
+  })
+)
+```
+
+### Task 3.4: Create Drizzle Config
+
+Create `packages/worker/drizzle.config.ts`:
+
+```typescript
+import { defineConfig } from "drizzle-kit"
+
+export default defineConfig({
+  schema: "./src/db/schema/index.ts",
+  out: "./src/db/migrations",
+  dialect: "sqlite",
+  driver: "d1-http"
 })
 ```
 
-## Key Files Reference
+---
 
-- Book index: `content/books/human-action/index.json`
-- Chunks: `content/books/human-action/chunks/ch{01-39}_chunk{000-XXX}.txt`
-- Chapters: `content/books/human-action/chapters/*.md`
+## Phase 4: Refactor Services to Use Drizzle
 
-## Success Criteria
+### Task 4.1: Refactor StudentService
 
-All phases complete when:
-1. Worker deploys successfully to Cloudflare
-2. RAG retrieves relevant Human Action passages
-3. Telegram bot responds to /lesson and /chat commands
-4. CLI can start a chat session
-5. Student progress is tracked in D1
-6. Comprehension assessment adjusts pacing
-7. **All tests pass** (`pnpm test` exits with code 0)
-8. **README.md exists** with complete setup instructions for:
-   - Cloudflare account & wrangler CLI setup
-   - Creating D1 database and running migrations
-   - Creating Vectorize index
-   - Setting up Telegram bot via BotFather
-   - Getting Google AI API key
-   - Environment variables configuration
-   - Local development commands
-   - Deployment steps
+Replace raw SQL with Drizzle queries:
 
-When ALL checklist items are complete, tests pass, and documentation is written, output:
-<promise>HUMAN ACTION BOT COMPLETE</promise>
+```typescript
+import { Effect, Layer } from "effect"
+import { eq } from "drizzle-orm"
+import { DrizzleTag } from "../db/DrizzleLive"
+import { students } from "../db/schema"
+import type { Student, CreateStudent } from "@human-action-bot/shared"
+import { DatabaseError } from "@human-action-bot/shared/errors"
+
+export interface StudentService {
+  findByTelegramId: (telegramId: string) => Effect.Effect<Student | null, DatabaseError>
+  create: (data: CreateStudent) => Effect.Effect<Student, DatabaseError>
+  updateProgress: (id: number, chapter: number, section: number) => Effect.Effect<Student, DatabaseError>
+}
+
+export class StudentServiceTag extends Context.Tag("StudentService")<StudentServiceTag, StudentService>() {}
+
+export const StudentServiceLive = Layer.effect(
+  StudentServiceTag,
+  Effect.gen(function* () {
+    const db = yield* DrizzleTag
+
+    return {
+      findByTelegramId: (telegramId) =>
+        Effect.tryPromise({
+          try: async () => {
+            const result = await db.query.students.findFirst({
+              where: eq(students.telegramId, telegramId)
+            })
+            return result ?? null
+          },
+          catch: (error) => new DatabaseError("Failed to find student", error)
+        }),
+
+      create: (data) =>
+        Effect.tryPromise({
+          try: async () => {
+            const [result] = await db.insert(students)
+              .values({ telegramId: data.telegramId })
+              .returning()
+            return result
+          },
+          catch: (error) => new DatabaseError("Failed to create student", error)
+        }),
+
+      updateProgress: (id, chapter, section) =>
+        Effect.tryPromise({
+          try: async () => {
+            const [result] = await db.update(students)
+              .set({
+                currentChapter: chapter,
+                currentSection: section,
+                updatedAt: new Date().toISOString()
+              })
+              .where(eq(students.id, id))
+              .returning()
+            return result
+          },
+          catch: (error) => new DatabaseError("Failed to update progress", error)
+        })
+    }
+  })
+)
+```
+
+### Task 4.2: Refactor Remaining Services
+
+Apply the same pattern to:
+- `ConversationService` - use `conversations` table schema
+- `LessonService` - use `lessonHistory` table schema
+- `ComprehensionService` - use `struggleLog` table schema
+
+---
+
+## Phase 5: Update Layer Composition
+
+### Task 5.1: Create Unified Database Layer
+
+Create `packages/worker/src/db/index.ts`:
+
+```typescript
+import { Layer } from "effect"
+import { DrizzleLive } from "./DrizzleLive"
+import { StudentServiceLive } from "../services/StudentService"
+import { ConversationServiceLive } from "../services/ConversationService"
+import { LessonServiceLive } from "../services/LessonService"
+
+export const DatabaseLayer = Layer.mergeAll(
+  DrizzleLive,
+  StudentServiceLive,
+  ConversationServiceLive,
+  LessonServiceLive
+)
+```
+
+### Task 5.2: Update Route Handlers
+
+Update effect-runtime.ts to include Drizzle layer in composition.
+
+---
+
+## Phase 6: Migrations
+
+### Task 6.1: Generate Initial Migration
+
+```bash
+pnpm --filter worker db:generate
+```
+
+### Task 6.2: Create Migration Script
+
+Create script to run migrations against D1:
+
+```typescript
+// scripts/migrate.ts
+import { drizzle } from "drizzle-orm/d1"
+import { migrate } from "drizzle-orm/d1/migrator"
+
+export async function runMigrations(d1: D1Database) {
+  const db = drizzle(d1)
+  await migrate(db, { migrationsFolder: "./src/db/migrations" })
+}
+```
+
+---
+
+## Verification Checklist
+
+After each phase, verify:
+
+- [ ] `pnpm build` succeeds with Turbo caching
+- [ ] `pnpm check-types` passes
+- [ ] All existing tests still pass
+- [ ] API endpoints return expected data
+- [ ] Database queries execute correctly
+
+---
+
+## File Changes Summary
+
+### New Files
+- `turbo.json`
+- `packages/shared/` (entire package)
+- `packages/worker/src/db/schema/*.ts`
+- `packages/worker/src/db/DrizzleLive.ts`
+- `packages/worker/src/db/migrations/`
+- `packages/worker/drizzle.config.ts`
+
+### Modified Files
+- Root `package.json` (turbo scripts)
+- `packages/worker/package.json` (drizzle deps, scripts)
+- `packages/worker/src/services/*.ts` (all services)
+- `packages/worker/src/lib/effect-runtime.ts` (layer composition)
+- `packages/worker/src/index.ts` (route handlers)
+
+### Removed Files
+- `packages/worker/src/db/schema.sql` (replaced by Drizzle schema)
+
+---
 
 ## Notes
 
-- Use pnpm as package manager
-- Prefer @effect/platform for HTTP client in CLI
-- Keep services small and composable
-- Write code that compiles (run tsc --noEmit to verify)
-- Don't skip steps - each iteration should make measurable progress
-
-## Testing Guidelines
-
-- Use Vitest as test runner
-- Use @cloudflare/vitest-pool-workers for Worker testing
-- Mock external services (AI SDK, Telegram API) in unit tests
-- Test Effect services by providing test layers
-- Run `pnpm test` after each phase to catch regressions
-- Aim for >80% coverage on core services
-
-```typescript
-// Example test pattern for Effect services
-import { Effect, Layer } from 'effect'
-import { describe, it, expect } from 'vitest'
-
-describe('StudentService', () => {
-  const TestD1 = Layer.succeed(D1Database, mockD1)
-
-  it('creates a new student', async () => {
-    const program = Effect.gen(function* () {
-      const service = yield* StudentService
-      return yield* service.createStudent('user-123')
-    })
-
-    const result = await Effect.runPromise(
-      program.pipe(Effect.provide(TestD1))
-    )
-    expect(result.userId).toBe('user-123')
-  })
-})
-```
-
-## README Structure
-
-The README.md should include:
-
-```markdown
-# Human Action Bot
-
-AI tutor for Ludwig von Mises' "Human Action"
-
-## Prerequisites
-- Node.js 20+
-- pnpm 9+
-- Cloudflare account
-- Telegram account
-- Google AI API key
-
-## Quick Start
-1. Clone & install
-2. Set up environment
-3. Run locally
-
-## External Services Setup
-
-### Cloudflare
-- Create account at cloudflare.com
-- Install wrangler: `pnpm add -g wrangler`
-- Login: `wrangler login`
-- Create D1: `wrangler d1 create human-action-db`
-- Create Vectorize: `wrangler vectorize create human-action-embeddings`
-- Create KV: `wrangler kv namespace create SESSIONS`
-
-### Telegram Bot
-- Message @BotFather on Telegram
-- Send /newbot, follow prompts
-- Copy the bot token
-- Set webhook after deployment
-
-### Google AI
-- Go to ai.google.dev
-- Create API key
-- Add to .env
-
-## Environment Variables
-(list all required vars)
-
-## Development
-- `pnpm dev` - Start local worker
-- `pnpm test` - Run tests
-- `pnpm build` - Build for production
-
-## Deployment
-- `pnpm deploy` - Deploy to Cloudflare
-```
+- D1 uses SQLite, so use `drizzle-orm/sqlite-core` for schema definitions
+- Drizzle with D1 requires `drizzle-orm/d1` adapter
+- Keep existing Cloudflare Worker deployment working throughout
+- Branded types provide compile-time safety without runtime overhead
+- Turborepo caches based on file inputs - commit `turbo.json` to repo

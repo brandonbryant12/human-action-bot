@@ -1,6 +1,5 @@
 import { Effect } from "effect"
 import chalk from "chalk"
-import ora from "ora"
 import { makeApiClient } from "../lib/api-client"
 import type { ApiConfig } from "../lib/api-client"
 
@@ -8,12 +7,10 @@ export async function progressCommand(config: ApiConfig): Promise<void> {
   const client = makeApiClient(config)
 
   console.log(chalk.blue("\n📊 Fetching your progress...\n"))
-
-  const spinner = ora("Loading...").start()
+  console.log(chalk.gray("Loading..."))
 
   try {
     const progress = await Effect.runPromise(client.getProgress())
-    spinner.stop()
 
     if (!progress.student) {
       console.log(chalk.yellow("No student profile found."))
@@ -54,7 +51,6 @@ export async function progressCommand(config: ApiConfig): Promise<void> {
 
     console.log()
   } catch (error) {
-    spinner.stop()
     console.error(chalk.red("\nError fetching progress: ") + String(error))
     console.log()
   }

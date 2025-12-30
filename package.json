@@ -8,13 +8,20 @@
     "dev": "pnpm --filter @human-action-bot/worker dev",
     "build": "pnpm --filter @human-action-bot/worker build",
     "test": "pnpm --filter @human-action-bot/worker test",
-    "deploy": "pnpm --filter @human-action-bot/worker deploy",
+    "deploy": "pnpm --filter @human-action-bot/worker run deploy",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "embed": "tsx scripts/embed_chunks.ts",
+    "seed": "tsx scripts/seed_vectorize.ts"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.15.1"
+  "packageManager": "pnpm@9.15.1",
+  "devDependencies": {
+    "@ai-sdk/google": "^1.0.0",
+    "ai": "^4.0.0",
+    "tsx": "^4.19.0"
+  }
 }

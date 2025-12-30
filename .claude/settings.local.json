@@ -7,7 +7,9 @@
       "WebFetch(domain:mises.org)",
       "WebSearch",
       "WebFetch(domain:www.econlib.org)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

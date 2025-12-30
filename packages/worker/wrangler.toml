@@ -5,9 +5,9 @@ compatibility_flags = ["nodejs_compat"]
 
 # D1 Database
 [[d1_databases]]
-binding = "DB"
+binding = "human_action_db"
 database_name = "human-action-db"
-database_id = "placeholder-will-be-replaced-after-creation"
+database_id = "b96789ff-8c67-40a6-9da3-46b35cca6cd8"
 
 # Vectorize Index for RAG
 [[vectorize]]
@@ -17,10 +17,10 @@ index_name = "human-action-embeddings"
 # KV Namespace for session storage
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "placeholder-will-be-replaced-after-creation"
+id = "75ce4cf122064060ad8d92f9835a6475"
 
 # Environment Variables (set via wrangler secret)
-# GOOGLE_GENERATIVE_AI_API_KEY - Google AI API key
+# GEMINI_API_KEY - Google AI API key
 # TELEGRAM_BOT_TOKEN - Telegram bot token
 
 # Scheduled tasks for daily lessons
@@ -29,3 +29,5 @@ crons = ["0 8 * * *"]  # Run daily at 8 AM UTC
 
 [vars]
 ENVIRONMENT = "development"
+TUTOR_VERSION = "1.0.0"
+MODEL_NAME = "gemini-2.5-flash"

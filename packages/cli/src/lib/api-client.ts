@@ -48,6 +48,26 @@ export interface ProgressResponse {
   }
 }
 
+export interface VersionResponse {
+  tutorVersion: string
+  modelName: string
+  environment: string
+}
+
+export interface FeedbackRequest {
+  feedbackType: "lesson" | "chat" | "overall"
+  rating: number
+  comment?: string
+  lessonId?: string
+  chapterNumber?: number
+  clientType?: string
+}
+
+export interface FeedbackResponse {
+  success: boolean
+  message: string
+}
+
 // API errors
 export class ApiError extends Error {
   readonly _tag = "ApiError"
@@ -73,6 +93,8 @@ export interface ApiClient {
   readonly getLesson: () => Effect.Effect<LessonResponse, ApiError>
   readonly getProgress: () => Effect.Effect<ProgressResponse, ApiError>
   readonly createStudent: (displayName?: string) => Effect.Effect<void, ApiError>
+  readonly getVersion: () => Effect.Effect<VersionResponse, ApiError>
+  readonly submitFeedback: (feedback: FeedbackRequest) => Effect.Effect<FeedbackResponse, ApiError>
 }
 
 // ApiClient implementation
@@ -154,6 +176,31 @@ export const makeApiClient = (config: ApiConfig): ApiClient => {
           error instanceof ApiError
             ? error
             : new ApiError("Create student failed", undefined, error)
+      }),
+
+    getVersion: () =>
+      Effect.tryPromise({
+        try: () => request<VersionResponse>("/version"),
+        catch: (error) =>
+          error instanceof ApiError
+            ? error
+            : new ApiError("Version request failed", undefined, error)
+      }),
+
+    submitFeedback: (feedback: FeedbackRequest) =>
+      Effect.tryPromise({
+        try: () =>
+          request<FeedbackResponse>("/feedback", {
+            method: "POST",
+            body: JSON.stringify({
+              userId: config.userId,
+              ...feedback
+            })
+          }),
+        catch: (error) =>
+          error instanceof ApiError
+            ? error
+            : new ApiError("Feedback submission failed", undefined, error)
       })
   }
 }

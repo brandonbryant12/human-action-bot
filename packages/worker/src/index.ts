@@ -35,15 +35,26 @@ app.get("/", (c) => {
   return c.json({
     name: "Human Action Bot",
     description: "AI tutor for Ludwig von Mises' Human Action",
-    version: "1.0.0",
+    version: c.env.TUTOR_VERSION ?? "1.0.0",
+    model: c.env.MODEL_NAME ?? "gemini-2.5-flash",
     endpoints: {
       health: "/health",
       chat: "/chat",
       lesson: "/lesson",
       progress: "/progress",
+      feedback: "/feedback",
       news: "/news",
       telegram: "/telegram/webhook"
     }
+  })
+})
+
+// Version info endpoint
+app.get("/version", (c) => {
+  return c.json({
+    tutorVersion: c.env.TUTOR_VERSION ?? "1.0.0",
+    modelName: c.env.MODEL_NAME ?? "gemini-2.5-flash",
+    environment: c.env.ENVIRONMENT ?? "development"
   })
 })
 
@@ -52,6 +63,76 @@ app.route("/chat", chatRoutes)
 app.route("/lesson", lessonRoutes)
 app.route("/progress", progressRoutes)
 app.route("/telegram", telegramRoutes)
+
+// Feedback endpoint
+app.post("/feedback", async (c) => {
+  const body = await c.req.json<{
+    userId: string
+    feedbackType: "lesson" | "chat" | "overall"
+    rating: number
+    comment?: string
+    lessonId?: string
+    chapterNumber?: number
+    clientType?: string
+  }>()
+
+  if (!body.userId || !body.feedbackType || !body.rating) {
+    return c.json({ error: "userId, feedbackType, and rating are required" }, 400)
+  }
+
+  if (body.rating < 1 || body.rating > 5) {
+    return c.json({ error: "rating must be between 1 and 5" }, 400)
+  }
+
+  const program = Effect.gen(function* () {
+    const studentService = yield* StudentServiceTag
+    const student = yield* studentService.getByUserId(body.userId)
+
+    if (!student) {
+      yield* Effect.fail(new Error("Student not found"))
+    }
+
+    // Insert feedback directly using D1
+    const db = c.env.human_action_db
+    yield* Effect.promise(() =>
+      db.prepare(`
+        INSERT INTO feedback (student_id, feedback_type, rating, comment, lesson_id, chapter_number, tutor_version, model_name, model_version, client_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        student!.id,
+        body.feedbackType,
+        body.rating,
+        body.comment ?? null,
+        body.lessonId ?? null,
+        body.chapterNumber ?? null,
+        c.env.TUTOR_VERSION ?? "1.0.0",
+        c.env.MODEL_NAME ?? "gemini-2.5-flash",
+        null, // model_version for future use
+        body.clientType ?? "cli"
+      ).run()
+    )
+
+    return { success: true, message: "Thank you for your feedback!" }
+  })
+
+  const envLayer = makeEnvLayer(c.env)
+
+  try {
+    const result = await Effect.runPromise(
+      program.pipe(
+        Effect.provide(StudentServiceLive),
+        Effect.provide(envLayer)
+      )
+    )
+    return c.json(result)
+  } catch (error) {
+    console.error("Feedback error:", error)
+    return c.json(
+      { error: "Failed to submit feedback", details: String(error) },
+      500
+    )
+  }
+})
 
 // News/current events routes
 app.get("/news", async (c) => {

@@ -56,6 +56,23 @@ CREATE TABLE IF NOT EXISTS struggle_log (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
 
+-- Feedback: tracks student feedback for lessons and tutor quality
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    feedback_type TEXT NOT NULL CHECK (feedback_type IN ('lesson', 'chat', 'overall')),
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    lesson_id TEXT,
+    chapter_number INTEGER,
+    tutor_version TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    model_version TEXT,
+    client_type TEXT DEFAULT 'cli',
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
 CREATE INDEX IF NOT EXISTS idx_students_telegram_chat_id ON students(telegram_chat_id);
@@ -65,3 +82,6 @@ CREATE INDEX IF NOT EXISTS idx_conversations_student_id ON conversations(student
 CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
 CREATE INDEX IF NOT EXISTS idx_struggle_log_student_id ON struggle_log(student_id);
 CREATE INDEX IF NOT EXISTS idx_struggle_log_concept ON struggle_log(concept);
+CREATE INDEX IF NOT EXISTS idx_feedback_student_id ON feedback(student_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_tutor_version ON feedback(tutor_version);
+CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback(rating);

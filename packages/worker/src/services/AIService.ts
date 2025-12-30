@@ -1,8 +1,8 @@
 import { Effect, Context, Layer } from "effect"
-import { google } from "@ai-sdk/google"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 import type { CoreMessage } from "ai"
-import { GoogleApiKey, AIError } from "../lib/effect-runtime"
+import { GoogleApiKey, AIError, ModelName } from "../lib/effect-runtime"
 
 // AI generation options
 export interface AIGenerateOptions {
@@ -40,11 +40,15 @@ export const AIServiceLive = Layer.effect(
   AIServiceTag,
   Effect.gen(function* () {
     const apiKey = yield* GoogleApiKey
+    const modelName = yield* ModelName
 
     // Validate API key exists
     if (!apiKey) {
-      yield* Effect.fail(new AIError("GOOGLE_GENERATIVE_AI_API_KEY not configured"))
+      yield* Effect.fail(new AIError("GEMINI_API_KEY not configured"))
     }
+
+    // Initialize Google AI with API key
+    const google = createGoogleGenerativeAI({ apiKey })
 
     // Full generation with conversation history
     const generate = (options: AIGenerateOptions): Effect.Effect<AIGenerateResult, AIError> =>
@@ -53,7 +57,7 @@ export const AIServiceLive = Layer.effect(
           const { system, messages, maxTokens = 2048, temperature = 0.7 } = options
 
           const response = await generateText({
-            model: google("gemini-2.0-flash-exp"),
+            model: google(modelName),
             system,
             messages,
             maxTokens,

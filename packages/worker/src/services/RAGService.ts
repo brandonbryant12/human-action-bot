@@ -1,7 +1,7 @@
 import { Effect, Context, Layer, Schema } from "effect"
-import { google } from "@ai-sdk/google"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { embed } from "ai"
-import { VectorizeIndex, VectorizeError } from "../lib/effect-runtime"
+import { VectorizeIndex, VectorizeError, GoogleApiKey } from "../lib/effect-runtime"
 
 // Vectorize query result types (from Cloudflare Workers types)
 interface VectorizeMatch {
@@ -73,6 +73,10 @@ export const RAGServiceLive = Layer.effect(
   RAGServiceTag,
   Effect.gen(function* () {
     const vectorize = yield* VectorizeIndex
+    const apiKey = yield* GoogleApiKey
+
+    // Initialize Google AI with API key
+    const google = createGoogleGenerativeAI({ apiKey })
 
     // Helper to generate embedding for a query
     const getQueryEmbedding = (query: string): Effect.Effect<{ embedding: number[]; time: number }, VectorizeError> =>
@@ -149,16 +153,19 @@ export const RAGServiceLive = Layer.effect(
     // Get chunks by chapter (useful for lesson content)
     const getChunksByChapter = (chapter: number, limit = 10): Effect.Effect<RetrievedChunk[], VectorizeError> =>
       Effect.gen(function* () {
-        // For chapter-specific retrieval, we use a generic query about the chapter
-        // and filter by chapter number
+        // For chapter-specific retrieval, we use a semantic query
+        // and filter results by chapter number post-query
         const result = yield* search({
-          query: `Chapter ${chapter} main concepts and ideas`,
-          topK: limit,
-          chapterFilter: chapter,
+          query: `Chapter ${chapter} main concepts core ideas key principles`,
+          topK: limit * 3, // Get more results to filter
           minScore: 0.3 // Lower threshold for chapter-specific queries
         })
 
-        return result.chunks
+        // Filter by chapter number
+        const chapterChunks = result.chunks.filter(c => c.chapter === chapter)
+
+        // If no exact chapter match, return closest results
+        return chapterChunks.length > 0 ? chapterChunks.slice(0, limit) : result.chunks.slice(0, limit)
       })
 
     return {

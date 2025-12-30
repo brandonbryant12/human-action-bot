@@ -91,7 +91,7 @@ pnpm dev chat
 2. Create an API key
 3. Set as secret:
    ```bash
-   wrangler secret put GOOGLE_GENERATIVE_AI_API_KEY
+   wrangler secret put GEMINI_API_KEY
    ```
 
 ### Telegram Bot
@@ -112,13 +112,13 @@ pnpm dev chat
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Google AI API key for Gemini | Yes |
+| `GEMINI_API_KEY` | Google AI API key for Gemini | Yes |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | For Telegram |
 | `ENVIRONMENT` | `development` or `production` | No (defaults to development) |
 
 For local development, create a `.dev.vars` file:
 ```
-GOOGLE_GENERATIVE_AI_API_KEY=your-key-here
+GEMINI_API_KEY=your-key-here
 TELEGRAM_BOT_TOKEN=your-token-here
 ```
 
@@ -176,7 +176,7 @@ pnpm build
 Before the RAG system can work, you need to generate embeddings:
 
 ```bash
-# Generate embeddings (requires GOOGLE_GENERATIVE_AI_API_KEY)
+# Generate embeddings (requires GEMINI_API_KEY)
 npx tsx scripts/embed_chunks.ts
 
 # Seed Vectorize index

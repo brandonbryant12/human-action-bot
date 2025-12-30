@@ -6,10 +6,19 @@
  * Outputs to embeddings/chunks.json
  */
 
-import { google } from "@ai-sdk/google"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { embedMany } from "ai"
 import * as fs from "node:fs"
 import * as path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Initialize Google AI with API key from environment
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY
+})
 
 interface ChunkMetadata {
   id: string
@@ -38,15 +47,28 @@ const BATCH_SIZE = 20
 function parseChunkFile(filename: string, content: string): { text: string; metadata: ChunkMetadata } {
   const lines = content.split("\n")
 
-  // Parse the chunk ID from filename (e.g., ch01_chunk000.txt)
-  const match = filename.match(/ch(\d+)_chunk(\d+)\.txt/)
-  if (!match) {
+  // Parse the chunk ID from filename
+  // Handles: ch01_chunk000.txt, foreword_t_chunk000.txt, introducti_chunk000.txt
+  const chapterMatch = filename.match(/ch(\d+)_chunk(\d+)\.txt/)
+  const specialMatch = filename.match(/(\w+)_chunk(\d+)\.txt/)
+
+  let chapter: number
+  let chunkIndex: number
+  let id: string
+
+  if (chapterMatch) {
+    chapter = parseInt(chapterMatch[1], 10)
+    chunkIndex = parseInt(chapterMatch[2], 10)
+    id = `ch${String(chapter).padStart(2, "0")}_chunk${String(chunkIndex).padStart(3, "0")}`
+  } else if (specialMatch) {
+    // Foreword and introduction get chapter 0
+    chapter = 0
+    chunkIndex = parseInt(specialMatch[2], 10)
+    const section = specialMatch[1]
+    id = `${section}_chunk${String(chunkIndex).padStart(3, "0")}`
+  } else {
     throw new Error(`Invalid chunk filename: ${filename}`)
   }
-
-  const chapter = parseInt(match[1], 10)
-  const chunkIndex = parseInt(match[2], 10)
-  const id = `ch${String(chapter).padStart(2, "0")}_chunk${String(chunkIndex).padStart(3, "0")}`
 
   // Parse header lines for metadata
   let partNumber: number | null = null
