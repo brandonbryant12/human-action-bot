@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(brew list:*)",
+      "Bash(python3:*)",
+      "Bash(pdftotext:*)",
+      "WebFetch(domain:mises.org)",
+      "WebSearch",
+      "WebFetch(domain:www.econlib.org)",
+      "Bash(tree:*)"
+    ]
+  }
+}

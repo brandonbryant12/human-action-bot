@@ -1,0 +1,31 @@
+name = "human-action-bot"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "human-action-db"
+database_id = "placeholder-will-be-replaced-after-creation"
+
+# Vectorize Index for RAG
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "human-action-embeddings"
+
+# KV Namespace for session storage
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "placeholder-will-be-replaced-after-creation"
+
+# Environment Variables (set via wrangler secret)
+# GOOGLE_GENERATIVE_AI_API_KEY - Google AI API key
+# TELEGRAM_BOT_TOKEN - Telegram bot token
+
+# Scheduled tasks for daily lessons
+[triggers]
+crons = ["0 8 * * *"]  # Run daily at 8 AM UTC
+
+[vars]
+ENVIRONMENT = "development"

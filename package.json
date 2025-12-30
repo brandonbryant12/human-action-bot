@@ -1,0 +1,20 @@
+{
+  "name": "human-action-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI tutor for Ludwig von Mises' Human Action",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @human-action-bot/worker dev",
+    "build": "pnpm --filter @human-action-bot/worker build",
+    "test": "pnpm --filter @human-action-bot/worker test",
+    "deploy": "pnpm --filter @human-action-bot/worker deploy",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.1"
+}
