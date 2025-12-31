@@ -1,258 +1,136 @@
-# Human Action Bot - Implementation Prompt
+Refactor this monorepo to follow modern Effect patterns with Drizzle ORM and Turborepo. Work through each phase sequentially, verifying the build passes after each phase before moving on.
 
-You are building an adaptive AI tutor for Ludwig von Mises' "Human Action" book.
+## Reference Architecture
+Base patterns on https://github.com/TeamWarp/effect-api-example which demonstrates:
+- Schema-first branded types with @effect/schema
+- Drizzle ORM with typed schema definitions
+- Effect service pattern with Layer composition
+- Turborepo for build orchestration
 
-## Context
+## Current State
+- Database: Raw SQL queries with D1 (Cloudflare Workers SQLite)
+- Types: Ad-hoc type definitions scattered across services
+- Build: Basic pnpm workspace without task orchestration
+- Services: Effect services with manual row-to-model conversion
+- Schema: SQL schema in `packages/worker/src/db/schema.sql`
 
-- Book content exists at: `content/books/human-action/` (326 chunks, 42 chapters, index.json)
-- Stack: Effect TS + Cloudflare Workers + AI SDK (Google Gemini) + Hono + Telegram
-- Monorepo structure with `packages/worker` and `packages/cli`
+## Target State
+- Database: Drizzle ORM with typed schema definitions
+- Types: Schema-first branded types in shared package
+- Build: Turborepo with cached, parallel task execution
+- Services: Clean service layer consuming Drizzle-typed queries
 
-## Current Task
+---
 
-Check the implementation status and continue building. On each iteration:
+## Phase 1: Turborepo Setup
 
-1. **Assess Progress**: Read `STATUS.md` (create if missing) to see what's done
-2. **Pick Next Task**: Choose the next uncompleted task from the checklist below
-3. **Implement**: Write working code with proper Effect TS patterns
-4. **Test**: Verify the code works (run type checks, basic tests)
-5. **Update Status**: Mark completed tasks in `STATUS.md`
-6. **Commit**: Commit your changes with a descriptive message
+1. Install turbo: `pnpm add -D turbo -w`
+2. Create `turbo.json` at repo root with tasks: build, lint, check-types, dev, db:generate, db:migrate
+3. Update root package.json scripts to use turbo
+4. Add corresponding scripts to each package
+5. Verify: `pnpm build` works
 
-## Implementation Checklist
+## Phase 2: Shared Types Package
 
-### Phase 1: Foundation
-- [ ] Create monorepo structure (pnpm-workspace.yaml, package.json, tsconfig.base.json)
-- [ ] Set up worker package (wrangler.toml, package.json with effect + hono + ai-sdk deps)
-- [ ] Create D1 schema (packages/worker/src/db/schema.sql) with students, lesson_history, conversations, struggle_log tables
-- [ ] Set up Effect runtime for Cloudflare Workers (packages/worker/src/lib/effect-runtime.ts)
-- [ ] Create Hono app entry point (packages/worker/src/index.ts)
+1. Create `packages/shared/` with structure:
+   - src/index.ts, src/schemas/*.ts, src/errors/index.ts
+   - package.json, tsconfig.json
+2. Define branded types with @effect/schema:
+   - StudentId, LessonId, ConversationId (Number branded)
+   - TelegramId (String branded)
+   - ComprehensionScore (Number 0-100 branded)
+   - LessonType literal union
+3. Define domain schemas: StudentSchema, LessonSchema, ConversationSchema
+4. Export shared error types: DatabaseError, AIError, VectorizeError
+5. Verify: `pnpm check-types` passes
 
-### Phase 2: RAG Pipeline
-- [ ] Create embedding script (scripts/embed_chunks.ts) - reads chunks, generates embeddings
-- [ ] Create Vectorize seeding script (scripts/seed_vectorize.ts)
-- [ ] Build RAGService with Effect (packages/worker/src/services/RAGService.ts)
-- [ ] Test RAG with sample queries
+## Phase 3: Drizzle ORM Integration
 
-### Phase 3: Core Services
-- [ ] Create AIService wrapper for AI SDK (packages/worker/src/services/AIService.ts)
-- [ ] Build StudentService (packages/worker/src/services/StudentService.ts) - profile CRUD
-- [ ] Build ConversationService (packages/worker/src/services/ConversationService.ts) - memory
-- [ ] Create tutor system prompt (packages/worker/src/prompts/tutor.ts)
-- [ ] Build ChatService (packages/worker/src/services/ChatService.ts) - RAG + conversation
+1. Install in worker: `pnpm add drizzle-orm` and `pnpm add -D drizzle-kit`
+2. Create `packages/worker/src/db/schema/` with:
+   - students.ts, lessons.ts, conversations.ts, struggles.ts, feedback.ts
+   - index.ts re-exporting all
+3. Use `sqliteTable` from `drizzle-orm/sqlite-core`
+4. Apply branded types with `.$type<T>()`
+5. Create `DrizzleLive.ts` service layer using D1DatabaseTag
+6. Create `drizzle.config.ts` for migrations
+7. Verify: Types compile correctly
 
-### Phase 4: Lesson System
-- [ ] Build LessonService (packages/worker/src/services/LessonService.ts) - progression logic
-- [ ] Create comprehension assessment prompt (packages/worker/src/prompts/comprehension.ts)
-- [ ] Build ComprehensionService (packages/worker/src/services/ComprehensionService.ts)
-- [ ] Build AdaptivePacingService (packages/worker/src/services/AdaptivePacingService.ts)
-- [ ] Set up Cron Trigger for daily lessons in wrangler.toml
+## Phase 4: Refactor Services to Use Drizzle
 
-### Phase 5: Current Events
-- [ ] Create currentEvents prompt (packages/worker/src/prompts/currentEvents.ts)
-- [ ] Build NewsService (packages/worker/src/services/NewsService.ts) - optional RSS fetch
-- [ ] Add /news route for current events analysis
+For each service (StudentService, ConversationService, LessonService, ComprehensionService):
+1. Import DrizzleTag and schema tables
+2. Replace raw SQL `d1.prepare()` calls with Drizzle query builder
+3. Use `db.query.tableName.findFirst()` for selects
+4. Use `db.insert().values().returning()` for inserts
+5. Use `db.update().set().where().returning()` for updates
+6. Keep Effect.tryPromise wrapper with proper error types
+7. Verify each service individually
 
-### Phase 6: Routes & API
-- [ ] Create /chat route (packages/worker/src/routes/chat.ts)
-- [ ] Create /lesson route (packages/worker/src/routes/lessons.ts)
-- [ ] Create /progress route for student progress
-- [ ] Add health check route
+## Phase 5: Update Layer Composition
 
-### Phase 7: Telegram Integration
-- [ ] Build TelegramService (packages/worker/src/services/TelegramService.ts)
-- [ ] Create Telegram webhook route (packages/worker/src/routes/telegram.ts)
-- [ ] Implement commands: /start, /lesson, /chat, /progress, /news, /help
-- [ ] Handle inline message conversations
+1. Create `packages/worker/src/db/index.ts` with unified DatabaseLayer
+2. Update `effect-runtime.ts` to include DrizzleLive in layer composition
+3. Update route handlers to use new layer structure
+4. Verify: All API endpoints still work
 
-### Phase 8: CLI Client
-- [ ] Set up cli package (packages/cli/package.json)
-- [ ] Create API client (packages/cli/src/lib/api-client.ts)
-- [ ] Build chat command (packages/cli/src/commands/chat.ts)
-- [ ] Build lesson command (packages/cli/src/commands/lesson.ts)
-- [ ] Build progress command (packages/cli/src/commands/progress.ts)
-- [ ] Create CLI entry point with commander/ink
+## Phase 6: Migrations
 
-### Phase 9: Testing
-- [ ] Set up Vitest for worker package (packages/worker/vitest.config.ts)
-- [ ] Write unit tests for StudentService
-- [ ] Write unit tests for LessonService
-- [ ] Write unit tests for RAGService
-- [ ] Write unit tests for ChatService
-- [ ] Write unit tests for ComprehensionService
-- [ ] Write integration tests for API routes
-- [ ] All tests passing (`pnpm test` exits with code 0)
+1. Add db:generate and db:migrate scripts to worker package.json
+2. Generate initial migration: `pnpm --filter worker db:generate`
+3. Create migration runner script for D1
+4. Verify: Database operations work end-to-end
 
-### Phase 10: Documentation
-- [ ] Create root README.md with project overview
-- [ ] Document Cloudflare setup (D1, Vectorize, KV, Workers)
-- [ ] Document Telegram Bot setup (BotFather, webhook URL)
-- [ ] Document Google AI API setup (API key, model selection)
-- [ ] Document environment variables (.env.example)
-- [ ] Document local development workflow
-- [ ] Document deployment instructions
+---
 
-## Effect TS Patterns to Use
+## Key Patterns to Follow
 
+**Branded Types (shared package):**
 ```typescript
-// Service definition
-class MyService extends Effect.Service<MyService>()("MyService", {
-  effect: Effect.gen(function* () {
-    const dep = yield* SomeDependency
-    return {
-      myMethod: (arg: string) => Effect.gen(function* () {
-        // implementation
-      })
-    }
-  }),
-  dependencies: [SomeDependency]
-}) {}
-
-// Schema for validation
-const StudentSchema = Schema.Struct({
-  userId: Schema.String,
-  currentChapter: Schema.Number,
-  paceMultiplier: Schema.Number
-})
-
-// Parallel operations
-const [context, history] = yield* Effect.all([
-  ragService.search(query),
-  conversationService.getHistory(userId)
-])
+import { Schema as S } from "@effect/schema"
+export const StudentIdSchema = S.Number.pipe(S.int(), S.brand("StudentId"))
+export type StudentId = S.Schema.Type<typeof StudentIdSchema>
 ```
 
-## AI SDK Pattern
-
+**Drizzle Schema (worker package):**
 ```typescript
-import { google } from '@ai-sdk/google'
-import { generateText } from 'ai'
-
-const response = await generateText({
-  model: google('gemini-2.0-flash-exp'),
-  system: TUTOR_SYSTEM_PROMPT,
-  messages: conversationHistory
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+export const students = sqliteTable("students", {
+  id: integer("id").primaryKey({ autoIncrement: true }).$type<StudentId>(),
+  telegramId: text("telegram_id").notNull().unique().$type<TelegramId>()
 })
 ```
 
-## Key Files Reference
+**Drizzle Service Layer:**
+```typescript
+export class DrizzleTag extends Context.Tag("Drizzle")<DrizzleTag, Database>() {}
+export const DrizzleLive = Layer.effect(DrizzleTag, Effect.gen(function* () {
+  const d1 = yield* D1DatabaseTag
+  return drizzle(d1, { schema })
+}))
+```
 
-- Book index: `content/books/human-action/index.json`
-- Chunks: `content/books/human-action/chunks/ch{01-39}_chunk{000-XXX}.txt`
-- Chapters: `content/books/human-action/chapters/*.md`
+**Service Using Drizzle:**
+```typescript
+const db = yield* DrizzleTag
+return Effect.tryPromise({
+  try: () => db.query.students.findFirst({ where: eq(students.telegramId, id) }),
+  catch: (error) => new DatabaseError("Failed to find student", error)
+})
+```
 
-## Success Criteria
+---
 
-All phases complete when:
-1. Worker deploys successfully to Cloudflare
-2. RAG retrieves relevant Human Action passages
-3. Telegram bot responds to /lesson and /chat commands
-4. CLI can start a chat session
-5. Student progress is tracked in D1
-6. Comprehension assessment adjusts pacing
-7. **All tests pass** (`pnpm test` exits with code 0)
-8. **README.md exists** with complete setup instructions for:
-   - Cloudflare account & wrangler CLI setup
-   - Creating D1 database and running migrations
-   - Creating Vectorize index
-   - Setting up Telegram bot via BotFather
-   - Getting Google AI API key
-   - Environment variables configuration
-   - Local development commands
-   - Deployment steps
+## Verification After Each Phase
 
-When ALL checklist items are complete, tests pass, and documentation is written, output:
-<promise>HUMAN ACTION BOT COMPLETE</promise>
+- [ ] `pnpm build` succeeds with Turbo caching
+- [ ] `pnpm check-types` passes
+- [ ] API endpoints return expected data
+- [ ] No regressions in functionality
 
 ## Notes
 
-- Use pnpm as package manager
-- Prefer @effect/platform for HTTP client in CLI
-- Keep services small and composable
-- Write code that compiles (run tsc --noEmit to verify)
-- Don't skip steps - each iteration should make measurable progress
-
-## Testing Guidelines
-
-- Use Vitest as test runner
-- Use @cloudflare/vitest-pool-workers for Worker testing
-- Mock external services (AI SDK, Telegram API) in unit tests
-- Test Effect services by providing test layers
-- Run `pnpm test` after each phase to catch regressions
-- Aim for >80% coverage on core services
-
-```typescript
-// Example test pattern for Effect services
-import { Effect, Layer } from 'effect'
-import { describe, it, expect } from 'vitest'
-
-describe('StudentService', () => {
-  const TestD1 = Layer.succeed(D1Database, mockD1)
-
-  it('creates a new student', async () => {
-    const program = Effect.gen(function* () {
-      const service = yield* StudentService
-      return yield* service.createStudent('user-123')
-    })
-
-    const result = await Effect.runPromise(
-      program.pipe(Effect.provide(TestD1))
-    )
-    expect(result.userId).toBe('user-123')
-  })
-})
-```
-
-## README Structure
-
-The README.md should include:
-
-```markdown
-# Human Action Bot
-
-AI tutor for Ludwig von Mises' "Human Action"
-
-## Prerequisites
-- Node.js 20+
-- pnpm 9+
-- Cloudflare account
-- Telegram account
-- Google AI API key
-
-## Quick Start
-1. Clone & install
-2. Set up environment
-3. Run locally
-
-## External Services Setup
-
-### Cloudflare
-- Create account at cloudflare.com
-- Install wrangler: `pnpm add -g wrangler`
-- Login: `wrangler login`
-- Create D1: `wrangler d1 create human-action-db`
-- Create Vectorize: `wrangler vectorize create human-action-embeddings`
-- Create KV: `wrangler kv namespace create SESSIONS`
-
-### Telegram Bot
-- Message @BotFather on Telegram
-- Send /newbot, follow prompts
-- Copy the bot token
-- Set webhook after deployment
-
-### Google AI
-- Go to ai.google.dev
-- Create API key
-- Add to .env
-
-## Environment Variables
-(list all required vars)
-
-## Development
-- `pnpm dev` - Start local worker
-- `pnpm test` - Run tests
-- `pnpm build` - Build for production
-
-## Deployment
-- `pnpm deploy` - Deploy to Cloudflare
-```
+- D1 uses SQLite, so use `drizzle-orm/sqlite-core` for schema definitions
+- Drizzle with D1 requires `drizzle-orm/d1` adapter
+- Keep existing Cloudflare Worker deployment working throughout
+- Delete `packages/worker/src/db/schema.sql` after migration is complete

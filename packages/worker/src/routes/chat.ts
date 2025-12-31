@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { Effect } from "effect"
 import type { CloudflareEnv } from "../lib/effect-runtime"
 import { makeEnvLayer } from "../lib/effect-runtime"
+import { DrizzleLive } from "../db/DrizzleLive"
 import { ChatServiceTag, ChatServiceLive } from "../services/ChatService"
 import { AIServiceLive } from "../services/AIService"
 import { RAGServiceLive } from "../services/RAGService"
@@ -43,6 +44,7 @@ chatRoutes.post("/", async (c) => {
         Effect.provide(RAGServiceLive),
         Effect.provide(ConversationServiceLive),
         Effect.provide(StudentServiceLive),
+        Effect.provide(DrizzleLive),
         Effect.provide(envLayer)
       )
     )

@@ -1,5 +1,6 @@
 import { Effect, Context, Layer } from "effect"
-import { TelegramBotToken, TelegramError } from "../lib/effect-runtime"
+import { TelegramError } from "@human-action-bot/shared"
+import { TelegramBotToken } from "../lib/effect-runtime"
 
 // Telegram message types
 export interface TelegramUser {
@@ -54,6 +55,18 @@ export interface TelegramCommand {
   firstName: string
 }
 
+// Inline keyboard button
+export interface InlineKeyboardButton {
+  text: string
+  callback_data?: string
+  url?: string
+}
+
+// Inline keyboard markup
+export interface InlineKeyboardMarkup {
+  inline_keyboard: InlineKeyboardButton[][]
+}
+
 // TelegramService interface
 export interface TelegramService {
   readonly sendMessage: (
@@ -62,7 +75,21 @@ export interface TelegramService {
     options?: {
       parseMode?: "HTML" | "Markdown" | "MarkdownV2"
       replyToMessageId?: number
+      replyMarkup?: InlineKeyboardMarkup
     }
+  ) => Effect.Effect<void, TelegramError>
+  readonly editMessage: (
+    chatId: number,
+    messageId: number,
+    text: string,
+    options?: {
+      parseMode?: "HTML" | "Markdown" | "MarkdownV2"
+      replyMarkup?: InlineKeyboardMarkup
+    }
+  ) => Effect.Effect<void, TelegramError>
+  readonly answerCallbackQuery: (
+    callbackQueryId: string,
+    text?: string
   ) => Effect.Effect<void, TelegramError>
   readonly parseCommand: (
     message: TelegramMessage
@@ -91,6 +118,7 @@ export const TelegramServiceLive = Layer.effect(
       options?: {
         parseMode?: "HTML" | "Markdown" | "MarkdownV2"
         replyToMessageId?: number
+        replyMarkup?: InlineKeyboardMarkup
       }
     ): Effect.Effect<void, TelegramError> =>
       Effect.tryPromise({
@@ -108,6 +136,10 @@ export const TelegramServiceLive = Layer.effect(
             body.reply_to_message_id = options.replyToMessageId
           }
 
+          if (options?.replyMarkup) {
+            body.reply_markup = options.replyMarkup
+          }
+
           const response = await fetch(`${apiUrl}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -118,7 +150,74 @@ export const TelegramServiceLive = Layer.effect(
             throw new Error(`Telegram API error: ${response.status}`)
           }
         },
-        catch: (error) => new TelegramError("Failed to send message", error)
+        catch: (error) => new TelegramError({ message: "Failed to send message", cause: error })
+      })
+
+    // Edit a message
+    const editMessage = (
+      chatId: number,
+      messageId: number,
+      text: string,
+      options?: {
+        parseMode?: "HTML" | "Markdown" | "MarkdownV2"
+        replyMarkup?: InlineKeyboardMarkup
+      }
+    ): Effect.Effect<void, TelegramError> =>
+      Effect.tryPromise({
+        try: async () => {
+          const body: Record<string, unknown> = {
+            chat_id: chatId,
+            message_id: messageId,
+            text
+          }
+
+          if (options?.parseMode) {
+            body.parse_mode = options.parseMode
+          }
+
+          if (options?.replyMarkup) {
+            body.reply_markup = options.replyMarkup
+          }
+
+          const response = await fetch(`${apiUrl}/editMessageText`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          })
+
+          if (!response.ok) {
+            throw new Error(`Telegram API error: ${response.status}`)
+          }
+        },
+        catch: (error) => new TelegramError({ message: "Failed to edit message", cause: error })
+      })
+
+    // Answer callback query
+    const answerCallbackQuery = (
+      callbackQueryId: string,
+      text?: string
+    ): Effect.Effect<void, TelegramError> =>
+      Effect.tryPromise({
+        try: async () => {
+          const body: Record<string, unknown> = {
+            callback_query_id: callbackQueryId
+          }
+
+          if (text) {
+            body.text = text
+          }
+
+          const response = await fetch(`${apiUrl}/answerCallbackQuery`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          })
+
+          if (!response.ok) {
+            throw new Error(`Telegram API error: ${response.status}`)
+          }
+        },
+        catch: (error) => new TelegramError({ message: "Failed to answer callback", cause: error })
       })
 
     // Parse a command from a message
@@ -165,11 +264,13 @@ export const TelegramServiceLive = Layer.effect(
             })
           })
         },
-        catch: (error) => new TelegramError("Failed to send typing action", error)
+        catch: (error) => new TelegramError({ message: "Failed to send typing action", cause: error })
       })
 
     return {
       sendMessage,
+      editMessage,
+      answerCallbackQuery,
       parseCommand,
       sendTypingAction
     }

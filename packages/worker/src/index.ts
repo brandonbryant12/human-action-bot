@@ -4,6 +4,7 @@ import { logger } from "hono/logger"
 import { Effect } from "effect"
 import type { CloudflareEnv } from "./lib/effect-runtime"
 import { makeEnvLayer } from "./lib/effect-runtime"
+import { DrizzleLive } from "./db/DrizzleLive"
 import chatRoutes from "./routes/chat"
 import lessonRoutes from "./routes/lessons"
 import progressRoutes from "./routes/progress"
@@ -121,6 +122,7 @@ app.post("/feedback", async (c) => {
     const result = await Effect.runPromise(
       program.pipe(
         Effect.provide(StudentServiceLive),
+        Effect.provide(DrizzleLive),
         Effect.provide(envLayer)
       )
     )
@@ -178,6 +180,7 @@ app.post("/news", async (c) => {
         Effect.provide(StudentServiceLive),
         Effect.provide(AIServiceLive),
         Effect.provide(RAGServiceLive),
+        Effect.provide(DrizzleLive),
         Effect.provide(envLayer)
       )
     )

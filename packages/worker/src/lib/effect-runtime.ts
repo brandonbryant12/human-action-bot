@@ -1,10 +1,15 @@
 import { Effect, Context, Layer } from "effect"
 
+// Re-export Cloudflare types with aliases to avoid shadowing
+type CFD1Database = D1Database
+type CFVectorizeIndex = VectorizeIndex
+type CFKVNamespace = KVNamespace
+
 // Cloudflare environment bindings
 export interface CloudflareEnv {
-  readonly human_action_db: D1Database
-  readonly VECTORIZE: VectorizeIndex
-  readonly SESSIONS: KVNamespace
+  readonly human_action_db: CFD1Database
+  readonly VECTORIZE: CFVectorizeIndex
+  readonly SESSIONS: CFKVNamespace
   readonly GEMINI_API_KEY: string
   readonly TELEGRAM_BOT_TOKEN: string
   readonly ENVIRONMENT: string
@@ -13,19 +18,19 @@ export interface CloudflareEnv {
 }
 
 // Context tags for Cloudflare bindings
-export class D1Database extends Context.Tag("D1Database")<
-  D1Database,
-  D1Database
+export class D1DatabaseTag extends Context.Tag("D1Database")<
+  D1DatabaseTag,
+  CFD1Database
 >() {}
 
-export class VectorizeIndex extends Context.Tag("VectorizeIndex")<
-  VectorizeIndex,
-  VectorizeIndex
+export class VectorizeIndexTag extends Context.Tag("VectorizeIndex")<
+  VectorizeIndexTag,
+  CFVectorizeIndex
 >() {}
 
-export class KVNamespace extends Context.Tag("KVNamespace")<
-  KVNamespace,
-  KVNamespace
+export class KVNamespaceTag extends Context.Tag("KVNamespace")<
+  KVNamespaceTag,
+  CFKVNamespace
 >() {}
 
 export class GoogleApiKey extends Context.Tag("GoogleApiKey")<
@@ -56,9 +61,9 @@ export class ModelName extends Context.Tag("ModelName")<
 // Create a layer from Cloudflare environment
 export const makeEnvLayer = (env: CloudflareEnv) =>
   Layer.mergeAll(
-    Layer.succeed(D1Database, env.human_action_db as unknown as D1Database),
-    Layer.succeed(VectorizeIndex, env.VECTORIZE as unknown as VectorizeIndex),
-    Layer.succeed(KVNamespace, env.SESSIONS as unknown as KVNamespace),
+    Layer.succeed(D1DatabaseTag, env.human_action_db),
+    Layer.succeed(VectorizeIndexTag, env.VECTORIZE),
+    Layer.succeed(KVNamespaceTag, env.SESSIONS),
     Layer.succeed(GoogleApiKey, env.GEMINI_API_KEY),
     Layer.succeed(TelegramBotToken, env.TELEGRAM_BOT_TOKEN ?? ""),
     Layer.succeed(Environment, env.ENVIRONMENT ?? "development"),
@@ -69,7 +74,7 @@ export const makeEnvLayer = (env: CloudflareEnv) =>
 // Helper to run an Effect with Cloudflare environment
 export const runWithEnv = <A, E>(
   env: CloudflareEnv,
-  effect: Effect.Effect<A, E, D1Database | VectorizeIndex | KVNamespace | GoogleApiKey | TelegramBotToken | Environment>
+  effect: Effect.Effect<A, E, D1DatabaseTag | VectorizeIndexTag | KVNamespaceTag | GoogleApiKey | TelegramBotToken | Environment>
 ): Promise<A> => {
   const layer = makeEnvLayer(env)
   return Effect.runPromise(Effect.provide(effect, layer))
@@ -78,41 +83,16 @@ export const runWithEnv = <A, E>(
 // Type-safe wrapper for running Effects that might fail
 export const runWithEnvEither = <A, E>(
   env: CloudflareEnv,
-  effect: Effect.Effect<A, E, D1Database | VectorizeIndex | KVNamespace | GoogleApiKey | TelegramBotToken | Environment>
+  effect: Effect.Effect<A, E, D1DatabaseTag | VectorizeIndexTag | KVNamespaceTag | GoogleApiKey | TelegramBotToken | Environment>
 ): Promise<A> => {
   const layer = makeEnvLayer(env)
   return Effect.runPromise(Effect.provide(effect, layer))
 }
 
-// Error types
-export class DatabaseError extends Error {
-  readonly _tag = "DatabaseError"
-  constructor(message: string, readonly cause?: unknown) {
-    super(message)
-    this.name = "DatabaseError"
-  }
-}
-
-export class VectorizeError extends Error {
-  readonly _tag = "VectorizeError"
-  constructor(message: string, readonly cause?: unknown) {
-    super(message)
-    this.name = "VectorizeError"
-  }
-}
-
-export class AIError extends Error {
-  readonly _tag = "AIError"
-  constructor(message: string, readonly cause?: unknown) {
-    super(message)
-    this.name = "AIError"
-  }
-}
-
-export class TelegramError extends Error {
-  readonly _tag = "TelegramError"
-  constructor(message: string, readonly cause?: unknown) {
-    super(message)
-    this.name = "TelegramError"
-  }
-}
+// Error types are now re-exported from @human-action-bot/shared
+export {
+  DatabaseError,
+  AIError,
+  VectorizeError,
+  TelegramError
+} from "@human-action-bot/shared"

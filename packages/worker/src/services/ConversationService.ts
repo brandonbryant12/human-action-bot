@@ -1,33 +1,10 @@
 import { Effect, Context, Layer } from "effect"
+import { eq, desc } from "drizzle-orm"
 import type { CoreMessage } from "ai"
-import { D1Database as D1DatabaseTag, DatabaseError } from "../lib/effect-runtime"
-
-// Conversation message from database
-interface ConversationRow {
-  id: number
-  student_id: number
-  role: "user" | "assistant" | "system"
-  content: string
-  chapter_context: number | null
-  created_at: string
-}
-
-// D1 types
-interface D1Result<T> {
-  results: T[]
-  success: boolean
-}
-
-interface D1Database {
-  prepare(query: string): D1PreparedStatement
-}
-
-interface D1PreparedStatement {
-  bind(...values: unknown[]): D1PreparedStatement
-  first<T>(): Promise<T | null>
-  all<T>(): Promise<D1Result<T>>
-  run(): Promise<{ success: boolean }>
-}
+import { DatabaseError } from "@human-action-bot/shared"
+import { DrizzleTag } from "../db/DrizzleLive"
+import { conversations } from "../db/schema"
+import type { StudentId, ChapterNumber, MessageRole } from "@human-action-bot/shared"
 
 // ConversationService interface
 export interface ConversationService {
@@ -54,11 +31,11 @@ export class ConversationServiceTag extends Context.Tag("ConversationService")<
   ConversationService
 >() {}
 
-// ConversationService implementation
+// ConversationService implementation using Drizzle
 export const ConversationServiceLive = Layer.effect(
   ConversationServiceTag,
   Effect.gen(function* () {
-    const db = yield* D1DatabaseTag
+    const db = yield* DrizzleTag
 
     const getHistory = (
       studentId: number,
@@ -66,19 +43,16 @@ export const ConversationServiceLive = Layer.effect(
     ): Effect.Effect<CoreMessage[], DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          const result = await d1
-            .prepare(
-              `SELECT role, content FROM conversations
-               WHERE student_id = ?
-               ORDER BY created_at DESC
-               LIMIT ?`
-            )
-            .bind(studentId, limit)
-            .all<ConversationRow>()
+          const rows = await db
+            .select({ role: conversations.role, content: conversations.content })
+            .from(conversations)
+            .where(eq(conversations.studentId, studentId as StudentId))
+            .orderBy(desc(conversations.createdAt))
+            .limit(limit)
+            .all()
 
           // Reverse to get chronological order
-          const messages: CoreMessage[] = result.results
+          const messages: CoreMessage[] = rows
             .reverse()
             .map((row) => ({
               role: row.role as "user" | "assistant",
@@ -87,7 +61,7 @@ export const ConversationServiceLive = Layer.effect(
 
           return messages
         },
-        catch: (error) => new DatabaseError("Failed to get conversation history", error)
+        catch: (error) => new DatabaseError({ message: "Failed to get conversation history", cause: error })
       })
 
     const addMessage = (
@@ -98,28 +72,28 @@ export const ConversationServiceLive = Layer.effect(
     ): Effect.Effect<void, DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          await d1
-            .prepare(
-              `INSERT INTO conversations (student_id, role, content, chapter_context)
-               VALUES (?, ?, ?, ?)`
-            )
-            .bind(studentId, role, content, chapterContext ?? null)
+          await db
+            .insert(conversations)
+            .values({
+              studentId: studentId as StudentId,
+              role: role as MessageRole,
+              content,
+              chapterContext: chapterContext !== undefined ? chapterContext as ChapterNumber : null
+            })
             .run()
         },
-        catch: (error) => new DatabaseError("Failed to add message", error)
+        catch: (error) => new DatabaseError({ message: "Failed to add message", cause: error })
       })
 
     const clearHistory = (studentId: number): Effect.Effect<void, DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          await d1
-            .prepare("DELETE FROM conversations WHERE student_id = ?")
-            .bind(studentId)
+          await db
+            .delete(conversations)
+            .where(eq(conversations.studentId, studentId as StudentId))
             .run()
         },
-        catch: (error) => new DatabaseError("Failed to clear history", error)
+        catch: (error) => new DatabaseError({ message: "Failed to clear history", cause: error })
       })
 
     const getRecentContext = (
@@ -128,26 +102,23 @@ export const ConversationServiceLive = Layer.effect(
     ): Effect.Effect<string, DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          const result = await d1
-            .prepare(
-              `SELECT role, content FROM conversations
-               WHERE student_id = ?
-               ORDER BY created_at DESC
-               LIMIT ?`
-            )
-            .bind(studentId, limit)
-            .all<ConversationRow>()
+          const rows = await db
+            .select({ role: conversations.role, content: conversations.content })
+            .from(conversations)
+            .where(eq(conversations.studentId, studentId as StudentId))
+            .orderBy(desc(conversations.createdAt))
+            .limit(limit)
+            .all()
 
           // Format as context string
-          const context = result.results
+          const context = rows
             .reverse()
             .map((row) => `${row.role}: ${row.content}`)
             .join("\n")
 
           return context
         },
-        catch: (error) => new DatabaseError("Failed to get recent context", error)
+        catch: (error) => new DatabaseError({ message: "Failed to get recent context", cause: error })
       })
 
     return {

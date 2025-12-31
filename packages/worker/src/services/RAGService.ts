@@ -1,7 +1,8 @@
 import { Effect, Context, Layer, Schema } from "effect"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { embed } from "ai"
-import { VectorizeIndex, VectorizeError, GoogleApiKey } from "../lib/effect-runtime"
+import { VectorizeError } from "@human-action-bot/shared"
+import { VectorizeIndexTag, GoogleApiKey } from "../lib/effect-runtime"
 
 // Vectorize query result types (from Cloudflare Workers types)
 interface VectorizeMatch {
@@ -72,7 +73,7 @@ export class RAGServiceTag extends Context.Tag("RAGService")<
 export const RAGServiceLive = Layer.effect(
   RAGServiceTag,
   Effect.gen(function* () {
-    const vectorize = yield* VectorizeIndex
+    const vectorize = yield* VectorizeIndexTag
     const apiKey = yield* GoogleApiKey
 
     // Initialize Google AI with API key
@@ -92,7 +93,7 @@ export const RAGServiceLive = Layer.effect(
             time: Date.now() - start
           }
         },
-        catch: (error) => new VectorizeError("Failed to generate embedding", error)
+        catch: (error) => new VectorizeError({ message: "Failed to generate embedding", cause: error })
       })
 
     // Search for relevant chunks
@@ -123,7 +124,7 @@ export const RAGServiceLive = Layer.effect(
             const queryResult = await index.query(embedding, options)
             return queryResult
           },
-          catch: (error) => new VectorizeError("Vectorize query failed", error)
+          catch: (error) => new VectorizeError({ message: "Vectorize query failed", cause: error })
         })
 
         const searchTime = Date.now() - searchStart

@@ -1,14 +1,17 @@
 import { Effect, Context, Layer } from "effect"
+import { eq, desc } from "drizzle-orm"
 import { AIServiceTag } from "./AIService"
 import { RAGServiceTag } from "./RAGService"
 import { StudentServiceTag } from "./StudentService"
 import type { Student } from "./StudentService"
 import { LESSON_INTRO_PROMPT, APPLICATION_PROMPT } from "../prompts/tutor"
-import { AIError, VectorizeError, DatabaseError } from "../lib/effect-runtime"
-import { D1Database as D1DatabaseTag } from "../lib/effect-runtime"
+import { AIError, VectorizeError, DatabaseError } from "@human-action-bot/shared"
+import { DrizzleTag } from "../db/DrizzleLive"
+import { lessonHistory, type LessonHistoryRow } from "../db/schema"
+import type { StudentId, ChapterNumber, LessonType } from "@human-action-bot/shared"
 
-// Lesson types
-export type LessonType = "intro" | "review" | "deep_dive" | "application"
+// Re-export LessonType for convenience
+export type { LessonType } from "@human-action-bot/shared"
 
 // Lesson content
 export interface Lesson {
@@ -20,31 +23,6 @@ export interface Lesson {
   content: string
   questions: string[]
   estimatedMinutes: number
-}
-
-// Lesson history row
-interface LessonHistoryRow {
-  id: number
-  student_id: number
-  chapter_number: number
-  chunk_id: string
-  lesson_type: string
-  comprehension_score: number | null
-  time_spent_seconds: number | null
-  questions_asked: number
-  completed_at: string
-}
-
-// D1 types
-interface D1Database {
-  prepare(query: string): D1PreparedStatement
-}
-
-interface D1PreparedStatement {
-  bind(...values: unknown[]): D1PreparedStatement
-  first<T>(): Promise<T | null>
-  all<T>(): Promise<{ results: T[] }>
-  run(): Promise<{ success: boolean }>
 }
 
 // LessonService error type
@@ -73,35 +51,30 @@ export class LessonServiceTag extends Context.Tag("LessonService")<
   LessonService
 >() {}
 
-// LessonService implementation
+// LessonService implementation using Drizzle
 export const LessonServiceLive = Layer.effect(
   LessonServiceTag,
   Effect.gen(function* () {
     const aiService = yield* AIServiceTag
     const ragService = yield* RAGServiceTag
     yield* StudentServiceTag // Ensure dependency is available
-    const db = yield* D1DatabaseTag
+    const db = yield* DrizzleTag
 
     // Determine what type of lesson to give based on student progress
     const determineLessonType = (student: Student): Effect.Effect<LessonType, DatabaseError> =>
       Effect.gen(function* () {
-        const d1 = db as unknown as D1Database
-
         // Get recent lessons for this student
         const recentResult = yield* Effect.tryPromise({
           try: async () => {
-            const result = await d1
-              .prepare(
-                `SELECT * FROM lesson_history
-                 WHERE student_id = ?
-                 ORDER BY completed_at DESC
-                 LIMIT 5`
-              )
-              .bind(student.id)
-              .all<LessonHistoryRow>()
-            return result.results
+            return await db
+              .select()
+              .from(lessonHistory)
+              .where(eq(lessonHistory.studentId, student.id as StudentId))
+              .orderBy(desc(lessonHistory.completedAt))
+              .limit(5)
+              .all()
           },
-          catch: (error) => new DatabaseError("Failed to get recent lessons", error)
+          catch: (error) => new DatabaseError({ message: "Failed to get recent lessons", cause: error })
         })
 
         // If no lessons yet, start with intro
@@ -111,8 +84,8 @@ export const LessonServiceLive = Layer.effect(
 
         // Check if student has been struggling (low comprehension)
         const recentScores = recentResult
-          .filter((l) => l.comprehension_score !== null)
-          .map((l) => l.comprehension_score!)
+          .filter((l) => l.comprehensionScore !== null)
+          .map((l) => l.comprehensionScore!)
 
         const avgRecentScore =
           recentScores.length > 0
@@ -125,7 +98,7 @@ export const LessonServiceLive = Layer.effect(
         }
 
         // Check lesson type rotation
-        const lastLessonType = recentResult[0]?.lesson_type as LessonType | undefined
+        const lastLessonType = recentResult[0]?.lessonType as LessonType | undefined
 
         // Rotate through lesson types
         switch (lastLessonType) {
@@ -154,7 +127,7 @@ export const LessonServiceLive = Layer.effect(
         )
 
         if (ragResult.length === 0) {
-          yield* Effect.fail(new AIError("No content found for this chapter"))
+          yield* Effect.fail(new AIError({ message: "No content found for this chapter" }))
         }
 
         const contentContext = ragResult
@@ -236,25 +209,20 @@ Format your response as:
     ): Effect.Effect<void, DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          await d1
-            .prepare(
-              `INSERT INTO lesson_history
-               (student_id, chapter_number, chunk_id, lesson_type, comprehension_score, time_spent_seconds, questions_asked)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              studentId,
-              lesson.chapter,
-              lesson.chunkId,
-              lesson.type,
+          await db
+            .insert(lessonHistory)
+            .values({
+              studentId: studentId as StudentId,
+              chapterNumber: lesson.chapter as ChapterNumber,
+              chunkId: lesson.chunkId,
+              lessonType: lesson.type,
               comprehensionScore,
               timeSpentSeconds,
               questionsAsked
-            )
+            })
             .run()
         },
-        catch: (error) => new DatabaseError("Failed to record lesson history", error)
+        catch: (error) => new DatabaseError({ message: "Failed to record lesson history", cause: error })
       })
 
     // Get recent lessons for a student
@@ -264,19 +232,15 @@ Format your response as:
     ): Effect.Effect<LessonHistoryRow[], DatabaseError> =>
       Effect.tryPromise({
         try: async () => {
-          const d1 = db as unknown as D1Database
-          const result = await d1
-            .prepare(
-              `SELECT * FROM lesson_history
-               WHERE student_id = ?
-               ORDER BY completed_at DESC
-               LIMIT ?`
-            )
-            .bind(studentId, limit)
-            .all<LessonHistoryRow>()
-          return result.results
+          return await db
+            .select()
+            .from(lessonHistory)
+            .where(eq(lessonHistory.studentId, studentId as StudentId))
+            .orderBy(desc(lessonHistory.completedAt))
+            .limit(limit)
+            .all()
         },
-        catch: (error) => new DatabaseError("Failed to get recent lessons", error)
+        catch: (error) => new DatabaseError({ message: "Failed to get recent lessons", cause: error })
       })
 
     return {

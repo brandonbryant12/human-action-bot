@@ -5,7 +5,7 @@ import { ConversationServiceTag } from "./ConversationService"
 import { StudentServiceTag } from "./StudentService"
 import type { Student } from "./StudentService"
 import { buildTutorPrompt } from "../prompts/tutor"
-import { AIError, VectorizeError, DatabaseError } from "../lib/effect-runtime"
+import { AIError, VectorizeError, DatabaseError } from "@human-action-bot/shared"
 
 // Chat request
 export interface ChatRequest {

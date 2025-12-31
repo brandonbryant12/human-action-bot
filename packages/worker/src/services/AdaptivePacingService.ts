@@ -2,7 +2,7 @@ import { Effect, Context, Layer } from "effect"
 import { StudentServiceTag } from "./StudentService"
 import type { Student } from "./StudentService"
 import { LessonServiceTag } from "./LessonService"
-import { DatabaseError } from "../lib/effect-runtime"
+import { DatabaseError } from "@human-action-bot/shared"
 
 // Pacing recommendation
 export interface PacingRecommendation {
@@ -42,8 +42,8 @@ export const AdaptivePacingServiceLive = Layer.effect(
 
         // Calculate average comprehension from recent lessons
         const recentScores = recentLessons
-          .filter((l) => l.comprehension_score !== null)
-          .map((l) => l.comprehension_score!)
+          .filter((l) => l.comprehensionScore !== null)
+          .map((l) => l.comprehensionScore!)
 
         const avgRecentScore =
           recentScores.length > 0
@@ -133,7 +133,7 @@ export const AdaptivePacingServiceLive = Layer.effect(
 
         // Check if student already had a lesson today
         const today = new Date().toISOString().split("T")[0]
-        const lastLessonDate = recentLessons[0]?.completed_at?.split("T")[0]
+        const lastLessonDate = recentLessons[0]?.completedAt?.split("T")[0]
 
         if (lastLessonDate === today) {
           return false // Already had a lesson today

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { Effect } from "effect"
 import type { CloudflareEnv } from "../lib/effect-runtime"
 import { makeEnvLayer } from "../lib/effect-runtime"
+import { DrizzleLive } from "../db/DrizzleLive"
 import { StudentServiceTag, StudentServiceLive } from "../services/StudentService"
 import { LessonServiceTag, LessonServiceLive } from "../services/LessonService"
 import { AdaptivePacingServiceTag, AdaptivePacingServiceLive } from "../services/AdaptivePacingService"
@@ -25,9 +26,10 @@ progressRoutes.get("/", async (c) => {
     const lessonService = yield* LessonServiceTag
     const pacingService = yield* AdaptivePacingServiceTag
 
-    const student = yield* studentService.getByUserId(userId)
+    // Get or create student
+    let student = yield* studentService.getByUserId(userId)
     if (!student) {
-      return { error: "Student not found", student: null }
+      student = yield* studentService.create({ userId })
     }
 
     const recentLessons = yield* lessonService.getRecentLessons(student.id, 10)
@@ -44,10 +46,10 @@ progressRoutes.get("/", async (c) => {
         createdAt: student.createdAt
       },
       recentLessons: recentLessons.map((lesson) => ({
-        chapterNumber: lesson.chapter_number,
-        lessonType: lesson.lesson_type,
-        comprehensionScore: lesson.comprehension_score,
-        completedAt: lesson.completed_at
+        chapterNumber: lesson.chapterNumber,
+        lessonType: lesson.lessonType,
+        comprehensionScore: lesson.comprehensionScore,
+        completedAt: lesson.completedAt
       })),
       pacing: pacingRecommendation
     }
@@ -63,6 +65,7 @@ progressRoutes.get("/", async (c) => {
         Effect.provide(StudentServiceLive),
         Effect.provide(AIServiceLive),
         Effect.provide(RAGServiceLive),
+        Effect.provide(DrizzleLive),
         Effect.provide(envLayer)
       )
     )
@@ -118,7 +121,11 @@ progressRoutes.post("/", async (c) => {
 
   try {
     const result = await Effect.runPromise(
-      program.pipe(Effect.provide(StudentServiceLive), Effect.provide(envLayer))
+      program.pipe(
+        Effect.provide(StudentServiceLive),
+        Effect.provide(DrizzleLive),
+        Effect.provide(envLayer)
+      )
     )
     return c.json(result)
   } catch (error) {

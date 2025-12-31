@@ -2,7 +2,8 @@ import { Effect, Context, Layer } from "effect"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 import type { CoreMessage } from "ai"
-import { GoogleApiKey, AIError, ModelName } from "../lib/effect-runtime"
+import { AIError } from "@human-action-bot/shared"
+import { GoogleApiKey, ModelName } from "../lib/effect-runtime"
 
 // AI generation options
 export interface AIGenerateOptions {
@@ -44,7 +45,7 @@ export const AIServiceLive = Layer.effect(
 
     // Validate API key exists
     if (!apiKey) {
-      yield* Effect.fail(new AIError("GEMINI_API_KEY not configured"))
+      yield* Effect.fail(new AIError({ message: "GEMINI_API_KEY not configured" }))
     }
 
     // Initialize Google AI with API key
@@ -74,7 +75,7 @@ export const AIServiceLive = Layer.effect(
             }
           }
         },
-        catch: (error) => new AIError("AI generation failed", error)
+        catch: (error) => new AIError({ message: "AI generation failed", cause: error })
       })
 
     // Simple one-shot generation

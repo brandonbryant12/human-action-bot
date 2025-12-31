@@ -1,4 +1,5 @@
 import { Effect, Context, Layer } from "effect"
+import { eq, and, desc } from "drizzle-orm"
 import { AIServiceTag } from "./AIService"
 import { StudentServiceTag } from "./StudentService"
 import type { Student } from "./StudentService"
@@ -6,7 +7,10 @@ import {
   buildComprehensionAssessment,
   parseComprehensionResponse
 } from "../prompts/comprehension"
-import { AIError, DatabaseError } from "../lib/effect-runtime"
+import { AIError, DatabaseError } from "@human-action-bot/shared"
+import { DrizzleTag } from "../db/DrizzleLive"
+import { struggleLog } from "../db/schema"
+import type { StudentId, ChapterNumber } from "@human-action-bot/shared"
 
 // Comprehension assessment result
 export interface ComprehensionResult {
@@ -62,6 +66,7 @@ export const ComprehensionServiceLive = Layer.effect(
   Effect.gen(function* () {
     const aiService = yield* AIServiceTag
     const studentService = yield* StudentServiceTag
+    const db = yield* DrizzleTag
 
     // Assess a student's answer
     const assessAnswer = (
@@ -99,17 +104,83 @@ export const ComprehensionServiceLive = Layer.effect(
 
     // Record a concept the student is struggling with
     const recordStruggle = (
-      _studentId: number,
-      _chapter: number,
-      _concept: string
+      studentId: number,
+      chapter: number,
+      concept: string
     ): Effect.Effect<void, DatabaseError> =>
-      Effect.succeed(undefined) // Simplified - would insert into struggle_log table
+      Effect.tryPromise({
+        try: async () => {
+          // Check if there's an existing struggle for this concept
+          const existing = await db
+            .select()
+            .from(struggleLog)
+            .where(
+              and(
+                eq(struggleLog.studentId, studentId as StudentId),
+                eq(struggleLog.concept, concept)
+              )
+            )
+            .get()
+
+          if (existing) {
+            // Update existing struggle
+            await db
+              .update(struggleLog)
+              .set({
+                struggleCount: (existing.struggleCount ?? 1) + 1,
+                lastStruggledAt: new Date().toISOString(),
+                resolved: false
+              })
+              .where(eq(struggleLog.id, existing.id))
+              .run()
+          } else {
+            // Insert new struggle
+            await db
+              .insert(struggleLog)
+              .values({
+                studentId: studentId as StudentId,
+                chapterNumber: chapter as ChapterNumber,
+                concept,
+                struggleCount: 1,
+                lastStruggledAt: new Date().toISOString(),
+                resolved: false
+              })
+              .run()
+          }
+        },
+        catch: (error) => new DatabaseError({ message: "Failed to record struggle", cause: error })
+      })
 
     // Get all struggles for a student
     const getStudentStruggles = (
-      _studentId: number
+      studentId: number
     ): Effect.Effect<StruggleEntry[], DatabaseError> =>
-      Effect.succeed([]) // Simplified - would query struggle_log table
+      Effect.tryPromise({
+        try: async () => {
+          const rows = await db
+            .select({
+              concept: struggleLog.concept,
+              count: struggleLog.struggleCount,
+              lastOccurred: struggleLog.lastStruggledAt
+            })
+            .from(struggleLog)
+            .where(
+              and(
+                eq(struggleLog.studentId, studentId as StudentId),
+                eq(struggleLog.resolved, false)
+              )
+            )
+            .orderBy(desc(struggleLog.lastStruggledAt))
+            .all()
+
+          return rows.map((row) => ({
+            concept: row.concept,
+            count: row.count ?? 1,
+            lastOccurred: row.lastOccurred ?? new Date().toISOString()
+          }))
+        },
+        catch: (error) => new DatabaseError({ message: "Failed to get student struggles", cause: error })
+      })
 
     // Update student progress after comprehension check
     const updateStudentProgress = (

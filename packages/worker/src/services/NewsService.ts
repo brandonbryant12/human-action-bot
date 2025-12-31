@@ -4,7 +4,7 @@ import { RAGServiceTag } from "./RAGService"
 import { StudentServiceTag } from "./StudentService"
 import type { Student } from "./StudentService"
 import { buildNewsAnalysisPrompt } from "../prompts/currentEvents"
-import { AIError, VectorizeError, DatabaseError } from "../lib/effect-runtime"
+import { AIError, VectorizeError, DatabaseError } from "@human-action-bot/shared"
 
 // News analysis request
 export interface NewsAnalysisRequest {
